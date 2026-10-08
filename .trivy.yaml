@@ -1,0 +1,10 @@
+severity:
+  - CRITICAL
+  - HIGH
+
+security-checks:
+  - vuln
+  - config
+  - secret
+
+ignore-unfixed: true
