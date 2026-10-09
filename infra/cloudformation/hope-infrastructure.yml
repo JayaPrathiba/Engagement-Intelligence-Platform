@@ -1,16 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: >
-  HOPE Platform — EC2 free-tier deployment with Docker Compose.
-  Creates an EC2 instance in the default VPC, installs Docker,
-  clones the repo, and starts the app. Auto-pulls changes every 2 min.
+Description: HOPE Platform - EC2 free-tier deployment with Docker Compose
 
 Parameters:
-  KeyPairName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: Existing EC2 key pair for SSH access
   GitHubRepo:
     Type: String
-    Default: https://github.com/joannakiruba/Engagement-Intelligence-Platform.git
+    Default: https://github.com/JayaPrathiba/Engagement-Intelligence-Platform.git
     Description: GitHub repository URL
   GitBranch:
     Type: String
@@ -18,7 +12,6 @@ Parameters:
     Description: Git branch to deploy
 
 Resources:
-  # Security group — allow HTTP and SSH
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -37,7 +30,6 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  # IAM role for CloudWatch logs (free)
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -58,13 +50,11 @@ Resources:
       Roles:
         - !Ref InstanceRole
 
-  # EC2 instance — free tier (t3.micro)
   AppServer:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
       ImageId: ami-0f88e80871fd81e91
-      KeyName: !Ref KeyPairName
       SecurityGroupIds:
         - !Ref AppSecurityGroup
       IamInstanceProfile: !Ref InstanceProfile
@@ -80,72 +70,28 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
-
-          # Update system
           yum update -y
-
-          # Install Docker
           yum install -y docker git
           systemctl enable docker
           systemctl start docker
           usermod -aG docker ec2-user
-
-          # Install Docker Compose
-          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-Linux-x86_64" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
-
-          # Add swap (free tier has limited RAM)
           dd if=/dev/zero of=/swapfile bs=1M count=2048
           chmod 600 /swapfile
           mkswap /swapfile
           swapon /swapfile
           echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-
-          # Clone repo (specific branch)
           cd /home/ec2-user
           git clone -b ${GitBranch} ${GitHubRepo} app
           chown -R ec2-user:ec2-user app
-
-          # Create .env file
-          cd app
-          cat > infra/.env << 'ENVEOF'
-          DB_PASSWORD=HopeSecure2024!@#
-          REDIS_PASSWORD=HopeRedis2024!@#
-          JWT_SECRET=hope-jwt-secret-change-this-in-production-64chars-minimum-ok
-          TOKEN_HASH_SECRET=hope-token-hash-secret-change-in-production-64chars-min
-          FRONTEND_URL=http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-          ENVEOF
-
-          # Start the app
-          cd infra
+          cd app/infra
           docker-compose -f docker-compose.prod.yml up -d --build
-
-          # Auto-deploy: pull changes every 2 minutes
-          cat > /home/ec2-user/auto-deploy.sh << 'SCRIPTEOF'
-          #!/bin/bash
-          cd /home/ec2-user/app
-          git fetch origin ${GitBranch}
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse origin/${GitBranch})
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            git pull origin ${GitBranch}
-            cd infra
-            docker-compose -f docker-compose.prod.yml up -d --build
-          fi
-          SCRIPTEOF
-          chmod +x /home/ec2-user/auto-deploy.sh
-          chown ec2-user:ec2-user /home/ec2-user/auto-deploy.sh
-
-          # Cron: check for updates every 2 minutes
-          echo '*/2 * * * * /home/ec2-user/auto-deploy.sh >> /home/ec2-user/deploy.log 2>&1' | crontab -u ec2-user -
 
 Outputs:
   AppURL:
-    Description: Application URL (use this to access the app)
+    Description: Application URL
     Value: !Sub http://${AppServer.PublicIp}
   PublicIP:
-    Description: EC2 public IP address
+    Description: EC2 public IP
     Value: !GetAtt AppServer.PublicIp
-  SSHCommand:
-    Description: SSH command to connect
-    Value: !Sub ssh -i your-key.pem ec2-user@${AppServer.PublicIp}
