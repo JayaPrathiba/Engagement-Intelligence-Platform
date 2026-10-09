@@ -22,7 +22,7 @@ Resources:
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: HOPE Platform — HTTP and SSH access
+      GroupDescription: HOPE Platform - HTTP and SSH access
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
